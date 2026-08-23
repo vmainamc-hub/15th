@@ -35,8 +35,9 @@ import { buildBattle } from "./battle";
 import { runEnsemble, type EnsembleResult } from "./ml";
 import { loadRefinement } from "./settings";
 import { engineHealth } from "./health";
-import { apexSimulator, engineAgreement } from "./simulator";
+import { apexSimulator, engineAgreement, simulatorAdjustment } from "./simulator";
 import { entryLab } from "./entry-conditions";
+import { composeDanger } from "@/lib/sentinel/danger";
 import { observationEngine } from "@/lib/sentinel/observation";
 import { mapIntelToObservationInputs } from "@/lib/sentinel/observation/engineAdapter";
 import {
@@ -427,6 +428,7 @@ class ApexCore {
       const special = specialDigitRisk(digitIntel, bars, exposure.losers, adverse);
       c.exposure = exposure;
       c.specialRisk = special;
+
       // A favourable aggregate percentage never overrides a dangerous losing
       // digit: exposure and special-digit risk raise contract danger directly.
       c.danger = Math.round(
@@ -515,6 +517,21 @@ class ApexCore {
       specialDigits,
       fluctuation,
     };
+
+    // Canonical Danger Composition (computed once per cycle by ApexCore §6)
+    for (const c of contracts) {
+      const sim = simulatorAdjustment(symbol, c.id, c.theoretical);
+      const recentPerf = apexSimulator.recentPerformance(symbol, c.id, c.theoretical);
+      c.dangerComposition = composeDanger({
+        intel,
+        contract: c,
+        lifetime: sim.perf,
+        recent: recentPerf,
+        specialRisk: c.specialRisk,
+        buildup,
+      });
+    }
+
     this.intel.set(symbol, intel);
 
     // Offer the frozen state to the chronological contract simulator. It may

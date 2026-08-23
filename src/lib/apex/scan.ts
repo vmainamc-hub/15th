@@ -18,6 +18,7 @@ import { marketProfiles } from "./profiles";
 import { computeDirection } from "../sentinel/direction";
 import { composeDanger } from "../sentinel/danger";
 import { computeSetup } from "../sentinel/setup";
+import { resolveVeto } from "../sentinel/veto-resolver";
 import {
   comboLearning,
   IMMEDIATE_CONDITION,
@@ -306,13 +307,15 @@ export function rankOpportunities(
       };
       // Stage 1: which way does the measured evidence point?
       const direction = computeDirection(intel, c, spine);
-      // Stage 2a: what is dangerous right now, component by component?
-      const dangerComposition = composeDanger({
-        intel,
-        contract: c,
-        lifetime: sim.perf,
-        recent: recentPerf,
-      });
+      // Stage 2a: canonical danger composition computed once per cycle by ApexCore (§6)
+      const dangerComposition =
+        c.dangerComposition ??
+        composeDanger({
+          intel,
+          contract: c,
+          lifetime: sim.perf,
+          recent: recentPerf,
+        });
       // Stage 2: belief discounted by danger and by evidence maturity.
       const setup = computeSetup({
         intel,
@@ -1258,6 +1261,43 @@ export function rankOpportunities(
         theoreticalBaseline: c.theoretical,
       });
 
+      const vetoResolution = resolveVeto(
+        `${intel.symbol}:${c.id}`,
+        {
+          digitPsychologyHardBlock: digitPsychology.hardBlock,
+          digitPsychologyReason: digitPsychology.hardBlockReason,
+          priceActionVeto: priceAction.veto,
+          priceActionReason: priceAction.vetoReason,
+          losingSideSuppressed: lsp.verdict === "SUPPRESS",
+          losingSideReason: lsp.reason,
+          spineVeto:
+            spineBlocked || clearance.state === "BLOCKED" || entryClearance.verdict === "BLOCKED",
+          spineVetoReason: clearance.reason || entryClearance.summary,
+          dangerHardBlocked: dangerComposition.isHardBlocked,
+          dangerReason: dangerComposition.autoBlock[0]?.detail,
+        },
+        {
+          isVetoed: dossier?.state === "VETOED" || dossier?.state === "REJECTED",
+          isHardBlocked: !isObsQualified,
+          isUnqualified: !isObsQualified,
+          state: dossier?.state,
+          liveHealth: qualification?.liveHealth,
+          reason: !isObsQualified
+            ? dossier
+              ? dossier.state !== "RIPE"
+                ? `Candidate in ${dossier.state} state (not RIPE)`
+                : `${qualification?.liveHealth ?? "UNQUALIFIED"}: ${qualification?.liveHealthReason ?? "Failed selectivity"}`
+              : "Cell not yet observed"
+            : undefined,
+        },
+        {
+          vetoed: governance.vetoed,
+          rule: governance.matchedRule?.rule,
+          reason: governance.matchedRule?.reason,
+          suggestedPenalty: governance.suggestedPenalty,
+        },
+      );
+
       ranked.push({
         rank: 0,
         symbol: intel.symbol,
@@ -1273,14 +1313,8 @@ export function rankOpportunities(
         agreement,
         clearance,
         evidence,
-        blocked:
-          !isObsQualified ||
-          governance.vetoed ||
-          spineBlocked ||
-          clearance.state === "BLOCKED" ||
-          entryClearance.verdict === "BLOCKED" ||
-          digitPsychology.hardBlock ||
-          priceAction.veto,
+        blocked: vetoResolution.isBlocked,
+        vetoResolution,
         governance,
         spine: governedSpine,
         stateEvidence,
@@ -1313,14 +1347,7 @@ export function rankOpportunities(
           verdict: entryClearance.verdict,
           grade: setup.grade,
           relative: "LEVEL",
-          blocked:
-            !isObsQualified ||
-            governance.vetoed ||
-            spineBlocked ||
-            clearance.state === "BLOCKED" ||
-            entryClearance.verdict === "BLOCKED" ||
-            digitPsychology.hardBlock ||
-            priceAction.veto,
+          blocked: vetoResolution.isBlocked,
           survival,
           entryTrigger,
         }),

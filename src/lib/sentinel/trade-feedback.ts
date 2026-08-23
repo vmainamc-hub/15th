@@ -13,7 +13,7 @@ import {
   recordOutcomeDirective,
   removeDirectivesBySource,
 } from "./immediate-guidance";
-import { observationEngine } from "./observation/observationEngine";
+import { observationEngine, resolveExactProposition } from "./observation/observationEngine";
 
 const KEY = "sentinel.trade-feedback.v1";
 const MAX_TRADES = 1000;
@@ -258,10 +258,11 @@ export function snapshotOf(item: RankedOpportunity): TradeSnapshot {
   const ep = item.entryPoint;
   const d = ep.preferred;
   const waiting = item.signal?.waitForEntry ?? !d;
+  const exactContract = resolveExactProposition(item.contract.id) ?? item.contract.id;
   return {
     symbol: item.symbol,
     name: item.name,
-    contract: item.contract.id,
+    contract: exactContract,
     contractLabel: item.contract.label,
     entryDigit: d && !waiting ? d.digit : null,
     entryConfidence: ep.confidence,

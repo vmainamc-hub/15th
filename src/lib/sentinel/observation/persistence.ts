@@ -13,6 +13,8 @@ import type { ObservationDossier, ObservationEvent, QualificationSnapshot } from
  */
 export interface ObservationPersistenceAdapter {
   saveDossierSnapshot(dossier: ObservationDossier): Promise<void>;
+  loadDossier(cellId: CellId): Promise<ObservationDossier | null>;
+  loadAllDossiers(): Promise<Record<string, ObservationDossier>>;
   appendEvent(cellId: CellId, event: ObservationEvent): Promise<void>;
   loadRecentEvents(cellId: CellId, limit?: number): Promise<ObservationEvent[]>;
   saveQualification(snapshot: QualificationSnapshot): Promise<void>;
@@ -22,6 +24,12 @@ export interface ObservationPersistenceAdapter {
 /** No-op adapter — safe default while wiring is in progress. Swap for a real adapter before shipping. */
 export class NullPersistenceAdapter implements ObservationPersistenceAdapter {
   async saveDossierSnapshot(): Promise<void> {}
+  async loadDossier(): Promise<ObservationDossier | null> {
+    return null;
+  }
+  async loadAllDossiers(): Promise<Record<string, ObservationDossier>> {
+    return {};
+  }
   async appendEvent(): Promise<void> {}
   async loadRecentEvents(): Promise<ObservationEvent[]> {
     return [];

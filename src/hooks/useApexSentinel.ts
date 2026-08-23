@@ -12,6 +12,7 @@ import {
 } from "@/lib/apex/scan";
 import type { MarketIntel, RankedOpportunity, ScanResult } from "@/lib/apex/types";
 import { memoryStats } from "@/lib/apex/memory";
+import { observationEngine, type ObservationEngineHealthReport } from "@/lib/sentinel/observation";
 
 const UI_REFRESH_MS = 1000;
 
@@ -24,6 +25,7 @@ export interface ApexState {
   globalDanger: number;
   globalDangerLabel: "CALM" | "ELEVATED" | "HOSTILE";
   memory: { states: number; observations: number; updatedAt: number };
+  observationHealth: ObservationEngineHealthReport;
   scan: ScanResult | null;
   scanning: boolean;
   runScan: () => ScanResult;
@@ -50,6 +52,7 @@ export function useApexSentinel(options: ScanOptions = DEFAULT_SCAN_OPTIONS): Ap
   const ranked = useMemo(() => rankOpportunities(intels, optsRef.current).ranked, [intels]);
   const gd = useMemo(() => globalDanger(intels), [intels]);
   const memory = useMemo(() => memoryStats(), [tick]);
+  const observationHealth = useMemo(() => observationEngine.getHealthStatus(), [tick]);
 
   const runScan = useCallback(() => {
     setScanning(true);
@@ -76,6 +79,7 @@ export function useApexSentinel(options: ScanOptions = DEFAULT_SCAN_OPTIONS): Ap
     globalDanger: gd,
     globalDangerLabel: gd < 35 ? "CALM" : gd < 65 ? "ELEVATED" : "HOSTILE",
     memory,
+    observationHealth,
     scan,
     scanning,
     runScan,

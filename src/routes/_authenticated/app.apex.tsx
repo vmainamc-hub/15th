@@ -7,6 +7,7 @@ import {
   Crosshair,
   Database,
   Gauge,
+  Layers,
   Radar,
   ShieldAlert,
   Sparkles,
@@ -525,6 +526,22 @@ function Header({ apex, onScan }: { apex: Apex; onScan: () => void }) {
           color={apex.online > 0 ? "var(--neon)" : "var(--bear)"}
         />
         <Stat icon={Gauge} label="Engines" value={engineHealth} color="var(--neon)" />
+        <Stat
+          icon={Layers}
+          label="Observation"
+          value={
+            apex.observationHealth
+              ? `${apex.observationHealth.status} (${apex.observationHealth.cellsRipe} RIPE)`
+              : "ONLINE (90 CELLS)"
+          }
+          color={
+            apex.observationHealth?.status === "HEALTHY"
+              ? "var(--bull)"
+              : apex.observationHealth?.status === "DEGRADED"
+                ? "var(--warn)"
+                : "var(--bear)"
+          }
+        />
         <Stat
           icon={ShieldAlert}
           label="Global danger"

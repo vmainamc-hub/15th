@@ -1,6 +1,14 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * @deprecated (§4.6)
+ * RETIRED IN FAVOR OF MODULAR OBSERVATION LAYER AT:
+ *   `/src/lib/sentinel/observation/`
+ *
+ * All live execution paths, state machines, and UI components now use
+ * `observationEngine` from `@/lib/sentinel/observation`.
+ * This file is retained strictly for backwards compatibility with legacy UI components.
  */
 
 import {

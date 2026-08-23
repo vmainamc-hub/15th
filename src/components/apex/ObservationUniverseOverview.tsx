@@ -129,6 +129,7 @@ export function ObservationUniverseOverview({
   // Read overview entries and active qualifications from observation engine
   const overview = useMemo(() => observationEngine.getOverview(90), [liveTick]);
   const qualifiedList = useMemo(() => observationEngine.getAllQualified(), [liveTick]);
+  const healthReport = useMemo(() => observationEngine.getHealthStatus(), [liveTick]);
 
   const selectedDossier = useMemo(() => {
     if (!selectedCell) return null;
@@ -213,6 +214,53 @@ export function ObservationUniverseOverview({
             }
             )
           </Button>
+        </div>
+      </div>
+
+      {/* OBSERVATION ENGINE HEALTH STRIP (§7) */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 rounded-xl border border-border/50 bg-background/30 p-3 text-xs">
+        <div className="flex items-center gap-2">
+          <div
+            className={`h-2.5 w-2.5 rounded-full ${
+              healthReport.status === "HEALTHY"
+                ? "bg-[var(--bull)]"
+                : healthReport.status === "DEGRADED"
+                  ? "bg-[var(--warn)]"
+                  : "bg-[var(--bear)]"
+            }`}
+          />
+          <div>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              Engine Health
+            </span>
+            <p className="font-semibold text-foreground">{healthReport.status}</p>
+          </div>
+        </div>
+        <div>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Universe Coverage
+          </span>
+          <p className="font-semibold text-foreground">
+            {healthReport.cellsObserved} / {healthReport.cellsTotal} Observed (
+            {healthReport.cellsRipe} Ripe)
+          </p>
+        </div>
+        <div>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Active / Vetoed
+          </span>
+          <p className="font-semibold text-foreground">
+            {healthReport.cellsActive} Active · {healthReport.cellsVetoed} Vetoed
+          </p>
+        </div>
+        <div>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Ingestion Pipeline
+          </span>
+          <p className="font-semibold text-foreground">
+            {healthReport.ingestErrors === 0 ? "0 Errors" : `${healthReport.ingestErrors} Errors`} (
+            {healthReport.lastTickLatencyMs.toFixed(1)}ms latency)
+          </p>
         </div>
       </div>
 

@@ -86,6 +86,14 @@ export class SupabasePersistenceAdapter implements ObservationPersistenceAdapter
     }
   }
 
+  async loadDossier(cellId: CellId): Promise<ObservationDossier | null> {
+    return this.memoryStore.dossiers[cellId] ?? null;
+  }
+
+  async loadAllDossiers(): Promise<Record<string, ObservationDossier>> {
+    return { ...this.memoryStore.dossiers };
+  }
+
   async appendEvent(cellId: CellId, event: ObservationEvent): Promise<void> {
     if (!this.memoryStore.events[cellId]) {
       this.memoryStore.events[cellId] = [];

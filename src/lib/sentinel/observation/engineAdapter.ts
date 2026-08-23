@@ -58,6 +58,7 @@ import { detectRegimeChange } from "@/lib/sentinel/regime-detector";
 import { simulatorAdjustment, apexSimulator } from "@/lib/apex/simulator";
 import { entryLab } from "@/lib/apex/entry-conditions";
 import { computeEntryPoint } from "@/lib/sentinel/entry-point";
+import { resolveVeto } from "@/lib/sentinel/veto-resolver";
 import { derivBus } from "@/lib/deriv/tick-bus";
 import { operatorLearningLookup } from "@/lib/sentinel/operator-learning";
 import { immediateGuidanceLookup } from "@/lib/sentinel/immediate-guidance";
@@ -284,30 +285,33 @@ export function mapIntelToObservationInputs(
     const sim = simulatorAdjustment(intel.symbol, c.id, c.theoretical);
     const recentPerf = apexSimulator.recentPerformance(intel.symbol, c.id, c.theoretical);
 
-    // 5. Governed Entry Point Evaluation (§4.2)
-    // Compose danger, entry recommendation, operator learning, guidance & Markov context
-    const preliminaryDanger = composeDanger({
-      intel,
-      contract: {
-        label: c.label,
-        side,
-        barrier: c.barrier,
-        winners,
-        losers,
-      },
-      lifetimeTicks: intel.ticks ?? 1000,
-      recentLatencyMs: intel.latencyMs,
-      losingSideHostile: lsp.state === "HOSTILE" || lsp.pressureLevel === "HOSTILE",
-      losingSidePressure: lsp,
-      pressure: { winPressure, losePressure, pressureField, byWindow: pressureByWindow },
-      psychology: { structure, digitPsychology },
-      entryPoint: null,
-      simulation: { sim, recentPerf },
-      regime: { regime: intel.regime, regimeReport },
-      specialRisk: c.specialRisk,
-      buildup: intel.buildup,
-      timeframeConflict: Object.values(pressureByWindow).some((w) => w === "OPPOSING"),
-    });
+    // 5. Canonical Danger Composition (§6)
+    // Single canonical evaluation of danger across the cycle, reused by entry-point,
+    // observation evidence, and veto resolution.
+    const dangerComposition =
+      c.dangerComposition ??
+      composeDanger({
+        intel,
+        contract: {
+          label: c.label,
+          side,
+          barrier: c.barrier,
+          winners,
+          losers,
+        },
+        lifetimeTicks: intel.ticks ?? 1000,
+        recentLatencyMs: intel.latencyMs,
+        losingSideHostile: lsp.state === "HOSTILE" || lsp.pressureLevel === "HOSTILE",
+        losingSidePressure: lsp,
+        pressure: { winPressure, losePressure, pressureField, byWindow: pressureByWindow },
+        psychology: { structure, digitPsychology },
+        entryPoint: null,
+        simulation: { sim, recentPerf },
+        regime: { regime: intel.regime, regimeReport },
+        specialRisk: c.specialRisk,
+        buildup: intel.buildup,
+        timeframeConflict: Object.values(pressureByWindow).some((w) => w === "OPPOSING"),
+      });
 
     const entryRec = entryLab.recommend(intel.symbol, c.id, c.theoretical);
     const operatorLearning = operatorLearningLookup(intel.symbol, c.id);
@@ -335,7 +339,7 @@ export function mapIntelToObservationInputs(
     );
 
     const clearanceBlocked = Boolean(
-      preliminaryDanger.isHardBlocked ||
+      dangerComposition.isHardBlocked ||
       digitPsychology.hardBlock ||
       lsp.verdict === "SUPPRESS" ||
       paContract.veto ||
@@ -348,7 +352,7 @@ export function mapIntelToObservationInputs(
         intel,
         contract: c,
         digits: digits as number[],
-        danger: preliminaryDanger,
+        danger: dangerComposition,
         entry: entryRec,
         clearanceBlocked,
         operator: operatorLearning,
@@ -545,53 +549,32 @@ export function mapIntelToObservationInputs(
       triggerState = "FAILED";
     }
 
-    // 11. Holistic Danger Engine Composition
-    const dangerComposition = composeDanger({
-      intel,
-      contract: {
-        label: c.label,
-        side,
-        barrier: c.barrier,
-        winners,
-        losers,
-      },
-      lifetimeTicks: intel.ticks ?? 1000,
-      recentLatencyMs: intel.latencyMs,
-      losingSideHostile: lsp.state === "HOSTILE" || lsp.pressureLevel === "HOSTILE",
-      losingSidePressure: lsp,
-      pressure: { winPressure, losePressure, pressureField, byWindow: pressureByWindow },
-      psychology: { structure, digitPsychology },
-      entryPoint,
-      simulation: { sim, recentPerf },
-      regime: { regime: intel.regime, regimeReport },
-      specialRisk: c.specialRisk,
-      buildup: intel.buildup,
-      timeframeConflict: Object.values(pressureByWindow).some((w) => w === "OPPOSING"),
-    });
+    // 11. Danger Evidence (using canonical Danger Composition §6)
+    // dangerComposition already evaluated once in section 5
 
-    // 12. Veto Engine
-    const vetoActive = Boolean(
-      contractSpine.veto.verdict === "VETO" ||
-      contractSpine.veto.verdict === "SUPPRESS" ||
-      lsp.verdict === "SUPPRESS" ||
-      paContract.veto ||
-      digitPsychology.hardBlock ||
-      dangerComposition.isHardBlocked,
+    // 12. Unified Veto Hierarchy (§5)
+    const vetoRes = resolveVeto(
+      `${marketId}:${prop}`,
+      {
+        digitPsychologyHardBlock: digitPsychology.hardBlock,
+        digitPsychologyReason: digitPsychology.hardBlockReason,
+        priceActionVeto: paContract.veto,
+        priceActionReason: paContract.vetoReason,
+        losingSideSuppressed: lsp.verdict === "SUPPRESS",
+        losingSideReason: lsp.reason,
+        spineVeto:
+          contractSpine.veto.verdict === "VETO" || contractSpine.veto.verdict === "SUPPRESS",
+        spineVetoReason: contractSpine.veto.summary,
+        dangerHardBlocked: dangerComposition.isHardBlocked,
+        dangerReason: dangerComposition.autoBlock[0]?.detail,
+      },
+      null,
+      null,
     );
-    const vetoHard = Boolean(
-      contractSpine.veto.verdict === "VETO" ||
-      lsp.verdict === "SUPPRESS" ||
-      paContract.veto ||
-      digitPsychology.hardBlock ||
-      dangerComposition.isHardBlocked,
-    );
-    const vetoReason =
-      dangerComposition.autoBlock[0]?.detail ||
-      contractSpine.veto.summary ||
-      lsp.reason ||
-      paContract.vetoReason ||
-      digitPsychology.hardBlockReason ||
-      undefined;
+
+    const vetoActive = vetoRes.isBlocked;
+    const vetoHard = vetoRes.isBlocked;
+    const vetoReason = vetoRes.reason || undefined;
 
     return {
       marketId,

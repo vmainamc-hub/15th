@@ -200,6 +200,8 @@ export interface ContractEval {
   losingSidePressure?: import("@/lib/sentinel/losing-side-pressure").LosingSidePressure | null;
   /** WINNING_SIDE_MOMENTUM — bounded, reward-only ranking modifier for the winning side. */
   winningSideMomentum?: import("@/lib/sentinel/winning-side-momentum").WinningSideMomentum | null;
+  /** Canonical danger composition computed once per cycle by ApexCore. */
+  dangerComposition?: import("@/lib/sentinel/danger").DangerComposition | null;
 }
 
 export interface MarketIntel {
@@ -275,6 +277,8 @@ export interface RankedOpportunity {
    * opportunity is never silently deleted — it is surfaced as BLOCKED instead.
    */
   blocked: boolean;
+  /** Unified Veto Resolution (§5) — single canonical verdict across local, observation, and global layers. */
+  vetoResolution?: import("@/lib/sentinel/veto-resolver").VetoResolution;
   /** STAGE 1 — direction belief from weighted engine votes. */
   direction: import("../sentinel/direction").DirectionReport;
   /** STAGE 2a — labelled danger composition (never a raw blend). */

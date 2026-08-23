@@ -56,6 +56,7 @@ export class ObservationCell {
   private activeCategory: string | null = null;
   private activeDirectiveType: string | null = null;
   private postMortemAdvice: string | null = null;
+  private onTransitionCallback: ((event: ObservationEvent) => void) | null = null;
 
   constructor(marketId: MarketId, proposition: Proposition) {
     this.marketId = marketId;
@@ -63,6 +64,10 @@ export class ObservationCell {
     this.id = cellId(marketId, proposition);
     this.createdAtTimestamp = Date.now();
     this.stateEnteredTimestamp = this.createdAtTimestamp;
+  }
+
+  setOnTransition(callback: ((event: ObservationEvent) => void) | null): void {
+    this.onTransitionCallback = callback;
   }
 
   /**
@@ -123,12 +128,14 @@ export class ObservationCell {
       if (this.state === "RIPE" || this.state === "CONFIRMING") {
         this.state = "UNSTABLE";
         this.transitionsCount += 1;
-        this.events.push({
+        const transitionEvent: ObservationEvent = {
           timestamp: postMortem.timestamp,
           from: prevState,
           to: "UNSTABLE",
           reason: `FEEDBACK LOSS / CONCERN POST-MORTEM: ${postMortem.summary}`,
-        });
+        };
+        this.events.push(transitionEvent);
+        this.onTransitionCallback?.(transitionEvent);
       } else {
         this.events.push({
           timestamp: postMortem.timestamp,
@@ -190,7 +197,7 @@ export class ObservationCell {
 
     if (nextState !== this.state) {
       this.transitionsCount += 1;
-      this.events.push({
+      const transitionEvent: ObservationEvent = {
         timestamp: input.timestamp,
         from: this.state,
         to: nextState,
@@ -202,10 +209,12 @@ export class ObservationCell {
           contradictions,
           hardVeto,
         ),
-      });
+      };
+      this.events.push(transitionEvent);
       this.state = nextState;
       this.currentStateSinceTick = this.tickCounter;
       this.stateEnteredTimestamp = input.timestamp;
+      this.onTransitionCallback?.(transitionEvent);
     }
 
     this.lastInput = input;

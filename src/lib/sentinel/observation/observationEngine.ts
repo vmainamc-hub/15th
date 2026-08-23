@@ -68,12 +68,47 @@ export class ObservationEngine {
   constructor() {
     for (const id of ALL_CELL_IDS) {
       const { marketId, proposition } = parseCellId(id);
-      this.cells.set(id, new ObservationCell(marketId, proposition));
+      const cell = new ObservationCell(marketId, proposition);
+      this.cells.set(id, cell);
     }
+    this.bindCellTransitions();
+    // Hydrate existing persisted state before first live ingest
+    void this.hydrate();
+  }
+
+  private bindCellTransitions(): void {
+    for (const [id, cell] of this.cells.entries()) {
+      cell.setOnTransition((event) => {
+        void this.persistence.appendEvent(id, event);
+      });
+    }
+  }
+
+  /**
+   * Hydrates all 90 cells with persisted dossiers and recent event logs (§4.5).
+   */
+  async hydrate(): Promise<number> {
+    let count = 0;
+    try {
+      const dossiers = await this.persistence.loadAllDossiers();
+      for (const [rawId, dossier] of Object.entries(dossiers)) {
+        const id = rawId as CellId;
+        const cell = this.cells.get(id);
+        if (cell && dossier) {
+          const events = await this.persistence.loadRecentEvents(id);
+          cell.hydrate(dossier, events);
+          count += 1;
+        }
+      }
+    } catch (err) {
+      this.recordIngestError(err);
+    }
+    return count;
   }
 
   setPersistenceAdapter(adapter: ObservationPersistenceAdapter) {
     this.persistence = adapter;
+    this.bindCellTransitions();
   }
 
   getPersistenceAdapter(): ObservationPersistenceAdapter {
@@ -177,22 +212,16 @@ export class ObservationEngine {
     const marketId = trade.snapshot.symbol;
     const rawContract = trade.snapshot.contract;
 
-    // Resolve target propositions
-    const matchingProps: Proposition[] = [];
-    if (PROPOSITIONS.includes(rawContract as Proposition)) {
-      matchingProps.push(rawContract as Proposition);
-    } else {
-      // Find matching proposition for this contract type (e.g. OVER vs UNDER)
-      for (const p of PROPOSITIONS) {
-        if (rawContract.toUpperCase().includes("OVER") && p.startsWith("OVER")) {
-          matchingProps.push(p);
-        } else if (rawContract.toUpperCase().includes("UNDER") && p.startsWith("UNDER")) {
-          matchingProps.push(p);
-        }
-      }
+    // §7: Resolve single exact target proposition. Cross-proposition spreading is strictly forbidden.
+    const exactProp = resolveExactProposition(rawContract);
+    if (!exactProp) {
+      console.warn(
+        `[ObservationEngine] Malformed or unresolvable contract '${rawContract}' in trade feedback for ${marketId}. Cross-proposition spreading is strictly forbidden.`,
+      );
+      return null;
     }
 
-    if (matchingProps.length === 0) return null;
+    const matchingProps: Proposition[] = [exactProp];
 
     const outcome = trade.outcome;
     const category = note?.category ?? trade.feedback?.category ?? null;
@@ -385,6 +414,30 @@ export class ObservationEngine {
 
 function qualityRank(band: "EXCEPTIONAL" | "STRONG" | "MODERATE" | "WEAK"): number {
   return { EXCEPTIONAL: 3, STRONG: 2, MODERATE: 1, WEAK: 0 }[band];
+}
+
+/**
+ * Normalizes and resolves a raw contract string to a single exact proposition.
+ * For example: "OVER2", "OVER_2", "Over 2", "OVER 2" -> "OVER2".
+ * Never spreads to multiple propositions.
+ */
+export function resolveExactProposition(raw: string): Proposition | null {
+  if (!raw) return null;
+  const upper = raw
+    .toUpperCase()
+    .trim()
+    .replace(/[\s_-]+/g, "");
+  if (PROPOSITIONS.includes(upper as Proposition)) {
+    return upper as Proposition;
+  }
+  const match = upper.match(/^(OVER|UNDER)([0-9])$/);
+  if (match) {
+    const candidate = `${match[1]}${match[2]}` as Proposition;
+    if (PROPOSITIONS.includes(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 export const observationEngine = new ObservationEngine();
